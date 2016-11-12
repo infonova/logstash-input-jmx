@@ -200,6 +200,8 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
   def thread_jmx(queue_conf,queue)
     while true
       begin
+        @run_thread = Thread.current
+
         @logger.debug('Wait config to retrieve from queue conf')
         thread_hash_conf = queue_conf.pop
         @logger.debug("Retrieve config #{thread_hash_conf} from queue conf")
@@ -371,6 +373,11 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
     end
 
   end
+
+  def stop
+    @interrupted = true
+    @run_thread.raise(LogStash::ShutdownSignal) if @run_thread.alive?
+  end 
 
   public
   def close

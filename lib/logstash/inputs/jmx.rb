@@ -106,6 +106,9 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
   # Indicate number of thread launched to retrieve metrics
   config :nb_thread, :validate => :number, :default => 4
 
+  # Yield an event in case of an error (e.g. JVM down)
+  config :event_on_error, :validate => :boolean, :default => false
+
   #Error messages
   MISSING_CONFIG_PARAMETER = "Missing parameter '%s'."
   BAD_TYPE_CONFIG_PARAMETER = "Bad type for parameter '%{param}', expecting '%{expected}', found '%{actual}'."
@@ -193,6 +196,22 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
     end
     decorate(event)
     queue << event
+  end
+
+  private
+  def handle_failure(queue, exception)
+      event = LogStash::Event.new
+      event.tag("_jmx_failure")
+
+      event.set("error", exception.message)
+      decorate(event)
+      queue << event
+  rescue StandardError, java.lang.Exception => e
+      @logger.error? && @logger.error("Cannot query JMX interface or send the error as an event!",
+                                      :exception => e,
+                                      :exception_message => e.message,
+                                      :exception_backtrace => e.backtrace
+                                     )
   end
 
   # Thread function to retrieve metrics from JMX
@@ -294,6 +313,9 @@ class LogStash::Inputs::Jmx < LogStash::Inputs::Base
       rescue LogStash::ShutdownSignal
         break #free
       rescue Exception => ex
+        if @event_on_error
+          handle_failure(queue, ex) 
+        end
         @logger.error(ex.message)
         @logger.error(ex.backtrace.join("\n"))
       end
